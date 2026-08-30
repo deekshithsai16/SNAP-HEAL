@@ -16,19 +16,33 @@ import json
 
 
 def home(request):
-
+    print(request.method =='POST')
     if request.method == "POST":
-
+        lang=request.POST.get("language")
+        request.session["lang"]=lang
         form = Crop_details_from(request.POST,request.FILES)
         if form.is_valid():
             Crop_details.objects.all().delete()
-            crop = form.save()
-            request.session["crop_data"] = str(crop.id)
-
-            return redirect("result")
+            crop=form.save()
+            request.session["crop_data"] = crop.id
+            print("testing")
+            return redirect("crop_images")
     else:
         form = Crop_details_from()
-    return render(request,"home.html",{"form": form})
+    return render(request,"main_home.html",{"form": form})
+def crop_images(request):
+    crop_id=request.session.get("crop_data")
+    if not crop_id:
+        return redirect("home")
+    crop=Crop_details.objects.get(id=crop_id)
+    if request.method == "POST":
+        crop.disease_img_1 = request.FILES.get("disease_img_1")
+        crop.disease_img_2 = request.FILES.get("disease_img_2")
+        crop.disease_img_3 = request.FILES.get("disease_img_3")
+        crop.disease_img_4 = request.FILES.get("disease_img_4")
+        crop.save()
+        return redirect("result")
+    return render(request,"home.html",{"form": crop})
 
 # RESULT PAGE
 
@@ -63,8 +77,8 @@ def generate_crop_advice(request):
 
     # GEMINI PROMPT
 
-    prompt = f"""
-
+    prompt = f""" 
+    generate the out in {request.session.get("lang")} 
 You are an expert Agricultural Crop-Care AI specializing in plant disease diagnosis, pest identification, crop nutrition, irrigation, and Integrated Pest Management (IPM).
 
 Your job is to analyze the farmer's crop problem using ALL available evidence:
@@ -88,7 +102,7 @@ Crop Name:
 {crop.crop_name}
 
 Crop Age:
-{crop.crop_age} days
+{crop.crop_age} 
 
     Farm Location:
     {crop.location} Current Weather
@@ -615,7 +629,7 @@ The final answer must be practical enough for a farmer to understand, but scient
                         f"{getattr(image_field, 'name', 'unknown')} "
                         f"{image_error}"
                     )
-            response = client.models.generate_content_stream(model="gemini-3.6-flash",contents=contents)
+            response = client.models.generate_content_stream(model="gemini-3.6-flash",contents=contents ,config=types.GenerateContentConfig(automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)))
             for chunk in response:
                 text = getattr(chunk,"text","")
                 if not text:
@@ -634,6 +648,7 @@ The final answer must be practical enough for a farmer to understand, but scient
             # COMPLETE
             yield (json.dumps({"type": "complete"})+ "\n")
         except Exception as error:
+            print("exception ",error)
             yield (json.dumps({"type": "error","message":"AI analysis failed. Please try again."})+ "\n")
 
     # STREAMING RESPONSE
